@@ -18,6 +18,9 @@ geopandas = "*"
 holidays = "*"
 keras-tuner = "*"
 tensorboard = "*"
+pydot = "*"
+graphviz = "*"
+joblib = "*"
 
 [dev-packages]
 ipykernel = "*"
