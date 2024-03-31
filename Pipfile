@@ -21,6 +21,7 @@ tensorboard = "*"
 pydot = "*"
 graphviz = "*"
 joblib = "*"
+ipykernel = "*"
 
 [dev-packages]
 ipykernel = "*"
