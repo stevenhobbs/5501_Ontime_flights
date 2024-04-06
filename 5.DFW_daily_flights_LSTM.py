@@ -567,6 +567,8 @@ df = df[['model', 'library', 'MSE', 'MAE', 'MAPE']]
 df = df.reset_index(drop=True)
 df.to_csv('model_output/TimeSeries_results.csv')
 
+# %%
+df
 # %% LSTM Model performance (OLD)
 print("Validation set performance:")
 print(df.round(2))

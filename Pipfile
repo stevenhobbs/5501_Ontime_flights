@@ -22,6 +22,8 @@ pydot = "*"
 graphviz = "*"
 joblib = "*"
 ipykernel = "*"
+scikit-optimize = "*"
+category-encoders = "*"
 
 [dev-packages]
 ipykernel = "*"
