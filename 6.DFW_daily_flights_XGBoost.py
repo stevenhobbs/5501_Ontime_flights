@@ -5,13 +5,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import xgboost as xgb
+import joblib
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score
-from sklearn.pipeline import Pipeline
-from category_encoders.target_encoder import TargetEncoder
+# from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score
+# from sklearn.pipeline import Pipeline
+# from category_encoders.target_encoder import TargetEncoder
 
-from xgboost import XGBRegressor, plot_importance, plot_tree
+from skopt import gp_minimize
+from skopt.utils import use_named_args
+from skopt.space import Real, Integer
+
 color_pal = sns.color_palette()
 plt.style.use('fivethirtyeight')
 
@@ -79,8 +84,9 @@ print("X_train shape:", X_train.shape)
 print("y_train shape:", y_train.shape)
 print("X_Test shape:", X_test.shape)
 
-# %% XGB Training Pipeline
+# %% XGB With Default Hyperparameters
 
+# Data Preprocessing
 X_train = pd.get_dummies(X_train)
 X_val = pd.get_dummies(X_val).reindex(columns = X_train.columns, fill_value=0)
 X_test = pd.get_dummies(X_test).reindex(columns = X_train.columns, fill_value=0)
@@ -89,6 +95,7 @@ dtrain = xgb.DMatrix(X_train, label=y_train['flights_ontime'])
 dval = xgb.DMatrix(X_val, label=y_val['flights_ontime'])
 dtest = xgb.DMatrix(X_test, label=y_test['flights_ontime'])
 
+# XGB
 param = {'max_depth': 5, 
          'eta': 0.01, 
          'objective': 'reg:squarederror',
@@ -97,28 +104,122 @@ param = {'max_depth': 5,
 
 evallist = [(dtrain, 'train'), (dval, 'eval')]
 
+# Train
 num_round = 1000
 bst = xgb.train(param, dtrain, num_round, evallist, 
                 early_stopping_rounds=50, verbose_eval=10)
 
-xgb.plot_importance(bst, max_num_features=15)
+# Validation
+y_val['flights_ontime_pred'] = bst.predict(dval)
+mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
 
-# %% Sklearn-like Training API
-reg = XGBRegressor(n_estimators = 1000, 
-                   learning_rate = 0.01, 
-                   max_depth = 5, 
-                   random_state = 42, 
-                   objective = 'reg:squarederror')
+print("VALIDATION")
+print(f"Mean Absolute Error: {mae}")
+print(f"Mean Squared Error: {mse}")
+print(f"Mean Absolute Percentage Error: {mape}")
 
-reg.fit(X_train, y_train['flights_ontime'],
-        eval_set = [(X_train, y_train['flights_ontime']), (X_val, y_val['flights_ontime'])],
-        early_stopping_rounds = 50,
-        verbose = True)
 
-plot_importance(reg, max_num_features=15)
-# %% Prediction
-y_val['flights_ontime_pred'] = reg.predict(X_val)
+# Performance
 y_train_all = pd.concat([y_train, y_val], axis=0)
+plt.figure(figsize=(15, 5))
+plt.scatter(y_train_all.index, y_train_all['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
+plt.scatter(y_train_all.index, y_train_all['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
+plt.xlabel('Date')
+plt.ylabel('Flights Ontime')
+plt.title('Actual and Predicted Flights Ontime')
+plt.legend()
+plt.show()
+
+
+# Feature Importance
+xgb.plot_importance(bst, max_num_features=15)
+plt.show()
+
+# %% Bayesian Hyperparameter tuning (skopt and gp_minimize)
+
+# Define the space of hyperparameters to search
+search_spaces = [
+    Integer(2, 8, name='max_depth'),
+    Real(0.001, 1.0, 'log-uniform', name='learning_rate'),
+    Real(0.5, 1.0, name='subsample'),
+    Real(0.5, 1.0, name='colsample_bytree'),
+    Real(0.5, 1.0, name='colsample_bylevel'),
+    Real(0.5, 1.0, name='colsample_bynode'),
+    Integer(100, 1000, name='num_boost_round'),
+    Real(0, 10, 'uniform', name='min_child_weight'),
+    Real(0.0, 10, name='reg_alpha'),
+    Real(0.0, 10, name='reg_lambda'),
+    Real(0.0, 10, name='gamma')
+]
+
+# Define the objective function
+@use_named_args(search_spaces)
+def objective(**params):
+    num_boost_round = params.pop('num_boost_round')
+    params['objective'] = 'reg:squarederror'
+    params['eval_metric'] = 'mae'
+    params['seed'] = 42
+
+    cv_results = xgb.cv(
+        params=params,
+        dtrain=xgb.DMatrix(X_train, label=y_train['flights_ontime']),
+        num_boost_round=num_boost_round,
+        nfold=3,
+        stratified=False,
+        early_stopping_rounds=50,
+        seed=42
+    )
+
+    # Extract the best score
+    best_score = cv_results['test-mae-mean'].min()
+    return best_score
+
+# Use gp_minimize to find the best hyperparameters using Bayesian optimization
+result = gp_minimize(
+    func=objective,
+    dimensions=search_spaces,
+    n_calls=20,
+    random_state=42
+)
+
+print("Best Hyperparameters: ", result.x)
+print("Best Score: ", result.fun)
+
+# %% Train and Save Best Model
+
+best_params = dict(zip([param.name for param in search_spaces], result.x))
+best_params['objective'] = 'reg:squarederror'
+best_params['eval_metric'] = 'mae'
+best_params['seed'] = 42
+
+best_reg = xgb.train(best_params, 
+                     dtrain, num_round, 
+                     evallist, 
+                     early_stopping_rounds=50, 
+                     verbose_eval=10)   
+
+import joblib
+joblib.dump(best_reg, 'models/flights_ontime/xgb_model.pkl')
+
+# %% Load & Validate Best Model
+best_reg = joblib.load('models/flights_ontime/xgb_model.pkl')
+
+# Validation
+y_val['flights_ontime_pred'] = best_reg.predict(dval)
+mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+
+print("VALIDATION METRICS")
+print(f"Mean Absolute Error: {mae}")
+print(f"Mean Squared Error: {mse}")
+print(f"Mean Absolute Percentage Error: {mape}")
+
+# %% Best Model Performance
+y_train_all = pd.concat([y_train, y_val], axis=0)
+y_train_all.index = pd.to_datetime(y_train_all.index)
 
 plt.figure(figsize=(15, 5))
 plt.scatter(y_train_all.index, y_train_all['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
@@ -129,35 +230,23 @@ plt.title('Actual and Predicted Flights Ontime')
 plt.legend()
 plt.show()
 
-# %% Evaluation
-mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+# Actual and Predicted Flights Ontime in December 2020
+plt.figure(figsize=(15, 5))
+plt.scatter(y_train_all.index, y_train_all['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
+plt.scatter(y_train_all.index, y_train_all['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
+plt.xlabel('Date')
+plt.ylabel('Flights Ontime')
+plt.title('Actual and Predicted Flights Ontime')
+plt.legend()
+plt.xlim(pd.to_datetime('2020-12-01'), pd.to_datetime('2020-12-31'))
+plt.show()
 
-print(f"Mean Absolute Error: {mae}")
-print(f"Mean Squared Error: {mse}")
-print(f"Mean Absolute Percentage Error: {mape}")
+# Feature Importance
+xgb.plot_importance(best_reg, max_num_features=15)
+plt.show()
 
-# %% Hyperparameter tuning (skopt)
-from skopt import BayesSearchCV
-from skopt.space import Real, Categorical, Integer
-
-search_spaces = {
-    'reg__max_depth': Integer(2, 8),
-
-    'reg__learning_rate': Real(0.001, 1.0, 'log-uniform'),
-    'reg__subsample': Real(0.5, 1.0),
-    'reg__colsample_bytree': Real(0.5, 1.0),
-    'reg__colsample_bylevel': Real(0.5, 1.0),
-    'reg__colsample_bynode': Real(0.5, 1.0),
-
-    # 'reg__n_estimators': Integer(100, 1000),
-    # 'reg__min_child_weight': Real(0, 10, 'uniform'),
-    # 'reg__max_delta_step': Real(0, 10, 'uniform'),
-
-    'reg__reg_alpha': Real(0.0, 10,),
-    'reg__reg_lambda': Real(0.0, 10),
-    'reg__gamma': Real(0.0, 10)
-}
-
-
+# %%
+# NEXT STEPS
+# - Plot actual vs predicted for three, week-long intervals
+# - Update 0.DFW_daily_flights_EDA.py to include xgb results
+# - Train on Kestrel

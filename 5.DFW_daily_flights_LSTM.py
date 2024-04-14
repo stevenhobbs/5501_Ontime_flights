@@ -522,53 +522,6 @@ def tune_and_evaluate(window, tuner_type='hyperband', epochs=100, patience=10, m
     return LSTM_model, LSTM_Keras_evaluate, LSTM_Sklearn
 
 # %% Tune, evaluate, save LSTM models
-os.makedirs('models/flights_ontime/TimeSeries', exist_ok=True)
-
-LSTMw1, LSTMw1_Keras_evaluate, LSTMw1_Sklearn = tune_and_evaluate(w1)
-LSTMw1.save('models/flights_ontime/TimeSeries/LSTMw1.keras')
-val_performance['LSTMw1_Keras_evaluate'] = LSTMw1_Keras_evaluate
-val_performance['LSTMw1_Sklearn'] = LSTMw1_Sklearn
-
-LSTMw2, LSTMw2_Keras_evaluate, LSTMw2_Sklearn = tune_and_evaluate(w2)
-LSTMw2.save('models/flights_ontime/TimeSeries/LSTMw2.keras')
-val_performance['LSTMw2_Keras_evaluate'] = LSTMw2_Keras_evaluate
-val_performance['LSTMw2_Sklearn'] = LSTMw2_Sklearn
-
-LSTMw3, LSTMw3_Keras_evaluate, LSTMw3_Sklearn = tune_and_evaluate(w3)
-LSTMw3.save('models/flights_ontime/TimeSeries/LSTMw3.keras')
-val_performance['LSTMw3_Keras_evaluate'] = LSTMw3_Keras_evaluate
-val_performance['LSTMw3_Sklearn'] = LSTMw3_Sklearn
-
-LSTMw7, LSTMw7_Keras_evaluate, LSTMw7_Sklearn = tune_and_evaluate(w7)
-LSTMw7.save('models/flights_ontime/TimeSeries/LSTMw7.keras')
-val_performance['LSTMw7_Keras_evaluate'] = LSTMw7_Keras_evaluate
-val_performance['LSTMw7_Sklearn'] = LSTMw7_Sklearn
-
-LSTMw14, LSTMw14_Keras_evaluate, LSTMw14_Sklearn = tune_and_evaluate(w14)
-LSTMw14.save('models/flights_ontime/TimeSeries/LSTMw14.keras')
-val_performance['LSTMw14_Keras_evaluate'] = LSTMw14_Keras_evaluate
-val_performance['LSTMw14_Sklearn'] = LSTMw14_Sklearn
-
-LSTMw28, LSTMw28_Keras_evaluate, LSTMw28_Sklearn = tune_and_evaluate(w28)
-LSTMw28.save('models/flights_ontime/TimeSeries/LSTMw28.keras')
-val_performance['LSTMw28_Keras_evaluate'] = LSTMw28_Keras_evaluate
-val_performance['LSTMw28_Sklearn'] = LSTMw28_Sklearn
-
-print("Validation set performance:")
-print(pd.DataFrame(val_performance).T.round(2))
-
-# Save validation performance metrics
-df = pd.DataFrame(val_performance).T
-df['model_library'] = df.index
-df['model_library'] = df['model_library'].str.replace('_evaluate', '')
-df[['model', 'library']] = df['model_library'].str.split('_', expand=True)
-df = df.drop(columns='model_library')
-df = df[['model', 'library', 'MSE', 'MAE', 'MAPE']]
-df = df.reset_index(drop=True)
-df.to_csv('model_output/TimeSeries_results.csv')
-
-# %%
-df
 # %% LSTM Model performance (OLD)
 print("Validation set performance:")
 print(df.round(2))
