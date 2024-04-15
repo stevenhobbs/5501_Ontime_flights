@@ -9,8 +9,10 @@ import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
 # from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score
-# from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline
 # from category_encoders.target_encoder import TargetEncoder
 
 from skopt import gp_minimize
@@ -24,6 +26,7 @@ plt.style.use('fivethirtyeight')
 DAILY_DATA_PATH = "data.v3/daily" 
 
 df = pd.read_parquet(os.path.join(DAILY_DATA_PATH, "daily_flights_and_weather_merged.parquet"))
+df = df.drop('date', axis=1)
 
 # Flights column groups
 flights_terminal_cols = ['flights_arr_A', 'flights_arr_B', 'flights_arr_C', 'flights_arr_D', 'flights_arr_E',
@@ -38,7 +41,7 @@ flights_percentage_cols = ['flights_cancel_pct', 'flights_delay_pct', 'flights_o
                             'flights_dep_delay_pct', 'flights_dep_ontime_pct', 'flights_dep_cancel_pct']
 
 # Date column groups
-date_cols = ['date', 'covid', 'ordinal_date', 'year', 'month', 'day_of_month', 'day_of_week', 'season', 'holiday', 'halloween', 'xmas_eve', 'new_years_eve', 'jan_2', 'jan_3', 'day_before_easter', 'days_until_xmas', 'days_until_thanksgiving', 'days_until_july_4th', 'days_until_labor_day', 'days_until_memorial_day']
+date_cols = ['covid', 'ordinal_date', 'year', 'month', 'day_of_month', 'day_of_week', 'season', 'holiday', 'halloween', 'xmas_eve', 'new_years_eve', 'jan_2', 'jan_3', 'day_before_easter', 'days_until_xmas', 'days_until_thanksgiving', 'days_until_july_4th', 'days_until_labor_day', 'days_until_memorial_day']
 
 # Weather column groups
 weather_cols = ['wx_temperature_max', 'wx_temperature_min', 'wx_apcp', 'wx_prate', 'wx_asnow', 'wx_frozr', 'wx_vis', 'wx_gust', 'wx_maxref', 'wx_cape', 'wx_lftx', 'wx_wind_speed', 'wx_wind_direction']
@@ -49,23 +52,23 @@ lag_cols =  ['flights_cancel_lag_1', 'flights_cancel_lag_2', 'flights_cancel_lag
              'flights_ontime_lag_1', 'flights_ontime_lag_2', 'flights_ontime_lag_3', 'flights_ontime_lag_4', 'flights_ontime_lag_5', 'flights_ontime_lag_6', 'flights_ontime_lag_7',]
 
 
-# print("Unique data types in df", df.dtypes.value_counts(), sep = '\n')
+print("Unique data types in df", df.dtypes.value_counts(), sep = '\n')
 
 # # Identify categorical and numeric columns in df
-# categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-# numeric_cols = df.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
-# num_features = df.shape[1]
+categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+numeric_cols = df.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
+num_features = df.shape[1]
 
-# print(f"\nCategorical columns: {categorical_cols}")
-# print(f"Numeric columns: {numeric_cols}")
-# print(f"\nAll columns accounted for: {len(categorical_cols) + len(numeric_cols) == num_features}")
+print(f"\nCategorical columns: {categorical_cols}")
+print(f"Numeric columns: {numeric_cols}")
+print(f"\nAll columns accounted for: {len(categorical_cols) + len(numeric_cols) == num_features}")
 
 # %% Split Data
 # Select training features
 train_features = date_cols + weather_cols + lag_cols
 
 # Create X and y
-X = df[train_features].drop('date', axis=1)
+X = df[train_features]
 y = df[flights_non_terminal_cols + flights_percentage_cols]
 
 print(X.columns.tolist())
@@ -78,24 +81,103 @@ X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.
 X_train, X_val, y_train, y_val = train_test_split(X_train_full, y_train_full, test_size=0.1, shuffle = True, random_state=42)
 
 # Print shapes
+print("\nX datasets:")
+print("X shape:", X.shape)
 print("X_train_full shape:", X_train_full.shape)
-print("y_train_full shape:", y_train_full.shape)
 print("X_train shape:", X_train.shape)
-print("y_train shape:", y_train.shape)
+print("X_val shape:", X_val.shape)
 print("X_Test shape:", X_test.shape)
+print("\ny datasets:")
+print("y shape:", y.shape)
+print("y_train_full shape:", y_train_full.shape)
+print("y_train shape:", y_train.shape)
+print("y_val shape:", y_val.shape)
+print("y_Test shape:", y_test.shape)
+
+# %% Data Preprocessing
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+X_numeric_cols = X.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
+
+class CustomPreprocessor(BaseEstimator, TransformerMixin):
+    def __init__(self, transformer):
+        self.transformer = transformer
+        self.get_feature_names_out = None
+
+    def fit(self, X, y=None):
+        self.transformer.fit(X[0], y)
+        self.get_feature_names_out = self.transformer.get_feature_names_out
+        return self
+
+    def transform(self, X):
+        return (self.transformer.transform(X[0]), X[1])
+
+class ArraytoDataFrame(BaseEstimator, TransformerMixin):
+    def __init__(self, feature_names):
+        self.feature_names = feature_names
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        df = pd.DataFrame(X[0], columns = self.feature_names)
+        return (df, X[1])
+    
+class DataFrameToDMatrix(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return xgb.DMatrix(X[0], label = X[1])
+    
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+        ('num', 'passthrough', X_numeric_cols)
+    ])
+
+pipeline = Pipeline([
+    ('custom_preprocessor', CustomPreprocessor(transformer=preprocessor)),
+    ('array_to_df', ArraytoDataFrame(feature_names = None)),
+    ('df_to_dmatrix', DataFrameToDMatrix())
+])
+
+pipeline.fit((X_train, y_train['flights_ontime']))
+
+# Set the feature names for the array_to_df transformer
+feature_names = pipeline.named_steps['custom_preprocessor'].get_feature_names_out()
+pipeline.named_steps['array_to_df'].feature_names = feature_names
+
+# Transform datasets
+dtrain = pipeline.transform((X_train, y_train['flights_ontime']))
+dfull = pipeline.transform((X, y['flights_ontime']))
+dval = pipeline.transform((X_val, y_val['flights_ontime']))
+dtest = pipeline.transform((X_test, y_test['flights_ontime']))
+
+
+# X_train = preprocessor.fit_transform(X_train)
+# X_train = pd.DataFrame(X_train, columns = preprocessor.get_feature_names_out())
+
+# X_full = preprocessor.transform(X)
+# X_full = pd.DataFrame(X_full, columns = preprocessor.get_feature_names_out())
+
+# X_val = preprocessor(X_val)
+# X_val = pd.DataFrame(X_val, columns = preprocessor.get_feature_names_out())
+
+# X_test = preprocessor(X_test)
+# X_test = pd.DataFrame(X_test, columns = preprocessor.get_feature_names_out())
+
+# # Create DMatrix for faster XGB performance
+# X_DMatrix = xgb.DMatrix(X_full, label=y['flights_ontime'])
+# dtrain = xgb.DMatrix(X_train, label=y_train['flights_ontime'])
+# dval = xgb.DMatrix(X_val, label=y_val['flights_ontime'])
+# dtest = xgb.DMatrix(X_test, label=y_test['flights_ontime'])
 
 # %% XGB With Default Hyperparameters
-
-# Data Preprocessing
-X_train = pd.get_dummies(X_train)
-X_val = pd.get_dummies(X_val).reindex(columns = X_train.columns, fill_value=0)
-X_test = pd.get_dummies(X_test).reindex(columns = X_train.columns, fill_value=0)
-
-dtrain = xgb.DMatrix(X_train, label=y_train['flights_ontime'])
-dval = xgb.DMatrix(X_val, label=y_val['flights_ontime'])
-dtest = xgb.DMatrix(X_test, label=y_test['flights_ontime'])
-
-# XGB
 param = {'max_depth': 5, 
          'eta': 0.01, 
          'objective': 'reg:squarederror',
@@ -164,7 +246,7 @@ def objective(**params):
 
     cv_results = xgb.cv(
         params=params,
-        dtrain=xgb.DMatrix(X_train, label=y_train['flights_ontime']),
+        dtrain=dtrain,
         num_boost_round=num_boost_round,
         nfold=3,
         stratified=False,
@@ -200,46 +282,70 @@ best_reg = xgb.train(best_params,
                      early_stopping_rounds=50, 
                      verbose_eval=10)   
 
-import joblib
 joblib.dump(best_reg, 'models/flights_ontime/xgb_model.pkl')
 
 # %% Load & Validate Best Model
 best_reg = joblib.load('models/flights_ontime/xgb_model.pkl')
+results_dir = 'model_output/flights_ontime'
+os.makedirs(results_dir, exist_ok=True)
 
 # Validation
 y_val['flights_ontime_pred'] = best_reg.predict(dval)
-mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+val_performance = {}
+val_performance['XGBoost'] = {
+    'MAE': mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred']),
+    'MSE': mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred']),
+    'MAPE': mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+}
+val_performance_df = pd.DataFrame(val_performance).T
+val_performance_df.to_csv(results_dir + '/xgb_val_performance.csv')
 
-print("VALIDATION METRICS")
-print(f"Mean Absolute Error: {mae}")
-print(f"Mean Squared Error: {mse}")
-print(f"Mean Absolute Percentage Error: {mape}")
+print("Validation Performance")
+print(val_performance_df.round(2))
+
+
+# mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+# mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+# mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
+
+# print("VALIDATION METRICS")
+# print(f"Mean Absolute Error: {mae}")
+# print(f"Mean Squared Error: {mse}")
+# print(f"Mean Absolute Percentage Error: {mape}")
 
 # %% Best Model Performance
-y_train_all = pd.concat([y_train, y_val], axis=0)
-y_train_all.index = pd.to_datetime(y_train_all.index)
+y['flights_ontime_pred'] = best_reg.predict(dfull)
 
 plt.figure(figsize=(15, 5))
-plt.scatter(y_train_all.index, y_train_all['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
-plt.scatter(y_train_all.index, y_train_all['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
+plt.scatter(y.index, y['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
+plt.scatter(y.index, y['flights_ontime_pred'], color='red', alpha = 0.25, label='Predicted Flights Ontime')
 plt.xlabel('Date')
 plt.ylabel('Flights Ontime')
 plt.title('Actual and Predicted Flights Ontime')
 plt.legend()
 plt.show()
 
-# Actual and Predicted Flights Ontime in December 2020
-plt.figure(figsize=(15, 5))
-plt.scatter(y_train_all.index, y_train_all['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
-plt.scatter(y_train_all.index, y_train_all['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
-plt.xlabel('Date')
-plt.ylabel('Flights Ontime')
-plt.title('Actual and Predicted Flights Ontime')
-plt.legend()
-plt.xlim(pd.to_datetime('2020-12-01'), pd.to_datetime('2020-12-31'))
-plt.show()
+# Actual and Predicted Flights Ontime by Month over the most recent 12 months
+for i in range(13):
+    start = y.index[-1] - pd.DateOffset(months=i)
+    end = y.index[-1] - pd.DateOffset(months=i-1) - pd.DateOffset(days=1)
+    plt.figure(figsize=(15, 5))
+    plt.scatter(y[start:end].index, y[start:end]['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
+    plt.scatter(y[start:end].index, y[start:end]['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
+    plt.ylabel('Flights Ontime')
+    plt.title(f'Actual and Predicted Flights Ontime - {start.strftime("%B")}, {start.year}')
+    plt.legend()
+    plt.show()
+
+# plt.figure(figsize=(15, 5))
+# plt.scatter(y.index, y['flights_ontime'], color='blue', alpha = 0.5, label='Actual Flights Ontime')
+# plt.scatter(y.index, y['flights_ontime_pred'], color='red', alpha = 0.5, label='Predicted Flights Ontime')
+# plt.xlabel('Date')
+# plt.ylabel('Flights Ontime')
+# plt.title('Actual and Predicted Flights Ontime')
+# plt.legend()
+# plt.xlim(pd.to_datetime('2020-12-01'), pd.to_datetime('2020-12-31'))
+# plt.show()
 
 # Feature Importance
 xgb.plot_importance(best_reg, max_num_features=15)
@@ -247,6 +353,5 @@ plt.show()
 
 # %%
 # NEXT STEPS
-# - Plot actual vs predicted for three, week-long intervals
 # - Update 0.DFW_daily_flights_EDA.py to include xgb results
 # - Train on Kestrel
