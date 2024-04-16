@@ -11,13 +11,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
-# from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score
 from sklearn.pipeline import Pipeline
-# from category_encoders.target_encoder import TargetEncoder
+
 
 from skopt import gp_minimize
 from skopt.utils import use_named_args
 from skopt.space import Real, Integer
+from skopt.plots import plot_convergence
 
 color_pal = sns.color_palette()
 plt.style.use('fivethirtyeight')
@@ -95,87 +95,41 @@ print("y_val shape:", y_val.shape)
 print("y_Test shape:", y_test.shape)
 
 # %% Data Preprocessing
-from sklearn.base import BaseEstimator, TransformerMixin
-
+"""
+Sklearn's OneHotEncoder returned better validation metrics compared to category_encoder's TargetEncoder. 
+TargetEncoder is recommended for XGBoost with high cardinality categorical features, because it does not 
+increase data dimensionality. Instead of creating columns for each categorical value, it replaces 
+categorical values with a smoothed mean, a weighted average between the overall target mean and the 
+category-specific mean. TargetEncoder may have underperformed compared to OneHotEncoder, because
+the categorical features in this dataset are low cardinality.
+"""
 
 X_numeric_cols = X.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
 
-class CustomPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self, transformer):
-        self.transformer = transformer
-        self.get_feature_names_out = None
-
-    def fit(self, X, y=None):
-        self.transformer.fit(X[0], y)
-        self.get_feature_names_out = self.transformer.get_feature_names_out
-        return self
-
-    def transform(self, X):
-        return (self.transformer.transform(X[0]), X[1])
-
-class ArraytoDataFrame(BaseEstimator, TransformerMixin):
-    def __init__(self, feature_names):
-        self.feature_names = feature_names
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        df = pd.DataFrame(X[0], columns = self.feature_names)
-        return (df, X[1])
-    
-class DataFrameToDMatrix(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        pass
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        return xgb.DMatrix(X[0], label = X[1])
-    
 preprocessor = ColumnTransformer(
     transformers=[
         ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
         ('num', 'passthrough', X_numeric_cols)
     ])
 
-pipeline = Pipeline([
-    ('custom_preprocessor', CustomPreprocessor(transformer=preprocessor)),
-    ('array_to_df', ArraytoDataFrame(feature_names = None)),
-    ('df_to_dmatrix', DataFrameToDMatrix())
-])
+preprocessor.fit(X_train)
 
-pipeline.fit((X_train, y_train['flights_ontime']))
+feature_names = preprocessor.get_feature_names_out()
 
-# Set the feature names for the array_to_df transformer
-feature_names = pipeline.named_steps['custom_preprocessor'].get_feature_names_out()
-pipeline.named_steps['array_to_df'].feature_names = feature_names
+def transform_to_df(preprocessor, X):
+    transformed = preprocessor.transform(X)
+    df = pd.DataFrame(transformed, columns=feature_names)
+    return df
 
-# Transform datasets
-dtrain = pipeline.transform((X_train, y_train['flights_ontime']))
-dfull = pipeline.transform((X, y['flights_ontime']))
-dval = pipeline.transform((X_val, y_val['flights_ontime']))
-dtest = pipeline.transform((X_test, y_test['flights_ontime']))
+X_train_transformed = transform_to_df(preprocessor, X_train)
+X_val_transformed = transform_to_df(preprocessor, X_val)
+X_test_transformed = transform_to_df(preprocessor, X_test)
+X_full_transformed = transform_to_df(preprocessor, X)
 
-
-# X_train = preprocessor.fit_transform(X_train)
-# X_train = pd.DataFrame(X_train, columns = preprocessor.get_feature_names_out())
-
-# X_full = preprocessor.transform(X)
-# X_full = pd.DataFrame(X_full, columns = preprocessor.get_feature_names_out())
-
-# X_val = preprocessor(X_val)
-# X_val = pd.DataFrame(X_val, columns = preprocessor.get_feature_names_out())
-
-# X_test = preprocessor(X_test)
-# X_test = pd.DataFrame(X_test, columns = preprocessor.get_feature_names_out())
-
-# # Create DMatrix for faster XGB performance
-# X_DMatrix = xgb.DMatrix(X_full, label=y['flights_ontime'])
-# dtrain = xgb.DMatrix(X_train, label=y_train['flights_ontime'])
-# dval = xgb.DMatrix(X_val, label=y_val['flights_ontime'])
-# dtest = xgb.DMatrix(X_test, label=y_test['flights_ontime'])
+dtrain = xgb.DMatrix(X_train_transformed, label = y_train['flights_ontime'])
+dval = xgb.DMatrix(X_val_transformed, label = y_val['flights_ontime'])
+dtest = xgb.DMatrix(X_test_transformed, label = y_test['flights_ontime'])
+dfull = xgb.DMatrix(X_full_transformed, label = y['flights_ontime'])
 
 # %% XGB With Default Hyperparameters
 param = {'max_depth': 5, 
@@ -248,7 +202,7 @@ def objective(**params):
         params=params,
         dtrain=dtrain,
         num_boost_round=num_boost_round,
-        nfold=3,
+        nfold=5,
         stratified=False,
         early_stopping_rounds=50,
         seed=42
@@ -262,14 +216,31 @@ def objective(**params):
 result = gp_minimize(
     func=objective,
     dimensions=search_spaces,
-    n_calls=20,
+    n_calls=200,
     random_state=42
 )
 
+plot_convergence(result)
 print("Best Hyperparameters: ", result.x)
 print("Best Score: ", result.fun)
 
-# %% Train and Save Best Model
+
+# %% Train and Save with Best Hyperparameters
+# Train with best hyperparameters
+best_params = dict(zip([param.name for param in search_spaces], result.x))
+best_params['objective'] = 'reg:squarederror'
+best_params['eval_metric'] = 'mae'
+best_params['seed'] = 42
+
+best_reg = xgb.train(best_params,
+                        dtrain, num_round,
+                        evallist,
+                        early_stopping_rounds=50,
+                        verbose_eval=10)
+
+joblib.dump(best_reg, 'models/flights_ontime/xgb_model.pkl')
+
+
 
 best_params = dict(zip([param.name for param in search_spaces], result.x))
 best_params['objective'] = 'reg:squarederror'
@@ -302,16 +273,6 @@ val_performance_df.to_csv(results_dir + '/xgb_val_performance.csv')
 
 print("Validation Performance")
 print(val_performance_df.round(2))
-
-
-# mae = mean_absolute_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-# mse = mean_squared_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-# mape = mean_absolute_percentage_error(y_val['flights_ontime'], y_val['flights_ontime_pred'])
-
-# print("VALIDATION METRICS")
-# print(f"Mean Absolute Error: {mae}")
-# print(f"Mean Squared Error: {mse}")
-# print(f"Mean Absolute Percentage Error: {mape}")
 
 # %% Best Model Performance
 y['flights_ontime_pred'] = best_reg.predict(dfull)
@@ -351,7 +312,4 @@ for i in range(13):
 xgb.plot_importance(best_reg, max_num_features=15)
 plt.show()
 
-# %%
-# NEXT STEPS
-# - Update 0.DFW_daily_flights_EDA.py to include xgb results
-# - Train on Kestrel
+# %% 
