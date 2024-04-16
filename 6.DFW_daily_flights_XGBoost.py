@@ -96,12 +96,21 @@ print("y_Test shape:", y_test.shape)
 
 # %% Data Preprocessing
 """
+Proprocessing notes: 
 Sklearn's OneHotEncoder returned better validation metrics compared to category_encoder's TargetEncoder. 
 TargetEncoder is recommended for XGBoost with high cardinality categorical features, because it does not 
 increase data dimensionality. Instead of creating columns for each categorical value, it replaces 
 categorical values with a smoothed mean, a weighted average between the overall target mean and the 
 category-specific mean. TargetEncoder may have underperformed compared to OneHotEncoder, because
 the categorical features in this dataset are low cardinality.
+
+xgb.DMatrix objects offer memory and speed advantagees compared to pandas DataFrames or numpy arrays, 
+especially for sparse datasets. DMatrix objects are optimized for distributed computing and allow for 
+more detailed configuration of parameters and optimization settings. However, DMatrix objects are not
+compatible with sklearn's ColumnTransformer, which is why we convert the transformed data back to a
+pandas DataFrame. They are also not compatible with Sklearn's BayesSearchCV, which is why we use skopt
+and gp_minimize for hyperparameter tuning. gp_minimize also uses Bayesian optimization to find the best
+hyperparameters for the XGBoost model.
 """
 
 X_numeric_cols = X.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
@@ -176,6 +185,23 @@ plt.show()
 # %% Bayesian Hyperparameter tuning (skopt and gp_minimize)
 
 # Define the space of hyperparameters to search
+
+"""
+search_spaces is a list of skopt.space objects that define the search space for the hyperparameters. The search space
+specifies the type of hyperparameter (e.g. integer, real) and the range of values to search. The search space is 
+defined for the following hyperparameters:
+- max_depth: The maximum depth of each tree
+- learning_rate: The learning rate of the model
+- subsample: The fraction of samples used to fit each tree
+- colsample_bytree: The fraction of features used to fit each tree
+- colsample_bylevel: The fraction of features used to fit each level of a tree
+- colsample_bynode: The fraction of features used to fit each node of a tree
+- num_boost_round: The number of boosting rounds (i.e. iterations)
+- min_child_weight: The minimum number of instances needed in a child
+- reg_alpha: L1 regularization term on weights
+- reg_lambda: L2 regularization term on weights
+- gamma: Minimum loss reduction required to partition a leaf node
+"""
 search_spaces = [
     Integer(2, 8, name='max_depth'),
     Real(0.001, 1.0, 'log-uniform', name='learning_rate'),
@@ -190,8 +216,17 @@ search_spaces = [
     Real(0.0, 10, name='gamma')
 ]
 
+"""
+Note:
+Without the @use_named_args skopt decorator, gp_minimize would pass to the objective function an un-named list of values obtained 
+by sampling search_spaces. The decorator adds functionality to the `objective` function, which involves combining the unnamed list 
+of values chosen by `gp_minimize` with the names from `search_spaces` into key:value pairs that become the `params` dictionary. The 
+params dictionary is then passed to the objective function, allowing the function to access the hyperparameters by name. gp_minimize
+uses Bayesian optimization to find the best score ('mae') by searching the hyperparameter space defined in search_spaces. The result
+is the best hyperparameters for the XGBoost model.
+"""
 # Define the objective function
-@use_named_args(search_spaces)
+@use_named_args(dimensions = search_spaces)
 def objective(**params):
     num_boost_round = params.pop('num_boost_round')
     params['objective'] = 'reg:squarederror'
@@ -212,7 +247,7 @@ def objective(**params):
     best_score = cv_results['test-mae-mean'].min()
     return best_score
 
-# Use gp_minimize to find the best hyperparameters using Bayesian optimization
+# gp_minimize will find hyperparameters that minimize the objective function using Bayesian optimization
 result = gp_minimize(
     func=objective,
     dimensions=search_spaces,
