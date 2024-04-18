@@ -1,31 +1,30 @@
-#%% Libraries
+#%% LIBRARIES
 import os
-import datetime
-import IPython
+# import datetime
+# import IPython
 
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import seaborn as sns
-import random
+# import seaborn as sns
+# import random
 
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error, r2_score
-from sklearn.compose import ColumnTransformer
+# from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 
 
 import tensorflow as tf
-from tensorflow.data import Dataset, AUTOTUNE
 
-from keras import layers, models, Sequential, regularizers
-from keras.layers import SimpleRNN, Dense, Dropout, Embedding, LSTM, GRU
+from keras import Sequential
+from keras.layers import Dense, LSTM
+from keras.layers import Dense, LSTM, Dropout
 from keras.optimizers import Adam
-from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
-from keras.utils import timeseries_dataset_from_array
-from keras.utils import plot_model
-from keras.regularizers import L1, L2, L1L2
+from keras.callbacks import EarlyStopping
+# from keras.utils import timeseries_dataset_from_array
+# from keras.utils import plot_model
+from keras.regularizers import L2
 from keras.metrics import MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError
 
 import keras_tuner as kt
@@ -34,7 +33,7 @@ mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 
 
-# %% Import data and define column groups
+# %% IMPORT DATA AND DEFINE COLUMN GROUPS
 DAILY_DATA_PATH = "data.v3/daily" 
 
 df = pd.read_parquet(os.path.join(DAILY_DATA_PATH, "daily_flights_and_weather_merged.parquet"))
@@ -76,7 +75,7 @@ print(f"\nCategorical columns: {categorical_cols}")
 print(f"Numeric columns: {numeric_cols}")
 print(f"\nAll columns accounted for: {len(categorical_cols) + len(numeric_cols) == num_features}")
 
-# %% Split data sequentially 70-20-10
+# %% SPLIT DATA SEQUENTIALLY 70-20-10
 n = len(df)
 train_raw = df[0:int(n*0.7)]
 val_raw = df[int(n*0.7):int(n*0.9)]
@@ -87,7 +86,7 @@ print(f"Train data preprocessed shape: {train_raw.shape}")
 print(f"Validation preprocessed data shape: {val_raw.shape}")
 print(f"Test data preprocessed shape: {test_raw.shape}")
 
-# %% Preprocess data for time series
+# %% PREPROCESS DATA FOR TIME SERIES
 scale_cols = [col for col in numeric_cols if col != 'flights_ontime']
 
 # Fit transformers to the training data
@@ -115,7 +114,7 @@ test_df = preprocess(test_raw)
 
 print(f"\nNumber of columns before preprocessing: {num_features}")
 print(f"Number of features after preprocessing: {train_df.shape[1]}")
-# %% WindowGenerator Class
+# %% DEFINE WINDOW GENERATOR CLASS
 """
 The `WindowGenerator` class stores the train, validate, and test sets (Pandas DataFrames), 
 and it handles indexes and offsets for windowing. Several methods are added to this class 
@@ -296,7 +295,7 @@ class WindowGenerator():
         self._example = result
     return result
   
-#%% Instantiate Window Generators
+#%% INSTANTIATE WINDOW GENERATORS
 w28 = WindowGenerator(input_width=28, label_width=28, shift=1,
                       label_columns=['flights_ontime'])
 
@@ -314,7 +313,7 @@ w2 = WindowGenerator(input_width=2, label_width=2, shift=1,
 
 w1 = WindowGenerator(input_width=1, label_width=1, shift=1,
                      label_columns=['flights_ontime'])
-# %% Demonstrate split window method
+# %% DEMONSTRATE SPLIT_WINDOW METHOD
 example_batch = tf.stack([np.array(train_df[:w7.total_window_size]),
                            np.array(train_df[100:100+w7.total_window_size]),
                            np.array(train_df[200:200+w7.total_window_size])])
@@ -325,9 +324,9 @@ print('Window shapes are: (batch size, time steps, features)')
 print(f'w7 shape: {example_batch.shape}')
 print(f'Inputs shape: {example_inputs.shape}')
 print(f'Labels shape: {example_labels.shape}')
-# %% Example plot inputs & labels
+# %% EXAMPLE PLOT OF INPUTS AND LABELS FOR 7-DAY WINDOW
 w7.plot()
-# %% Baseline Class
+# %% BASELINE FORECASTING
 """
 The `Baseline` class inherits from `keras.Model` and uses the current value of a 
 label to predict a label one step (one day) into the future, ignoring all other 
@@ -375,57 +374,162 @@ print("Baseline validation performance:")
 print(pd.DataFrame(val_performance).T.round(2))
 
 
-# %% Baseline plot
+# %% BASELINE PLOT
 w28.plot(baseline)
 
-# %% Linear Model
-"""
-Predict one day into the future using a linear model. The model is a single layer with one neuron.
-"""
-linear = Sequential([Dense(units=1)])
+# %% DEFINE TUNE_AND_EVALUATE FUNCTION
+def tune_and_evaluate(window, model_name, hypermodel_func, val_performance_dict, tuner_type='hyperband', epochs=100, patience=10, max_trials=100):
+   # clear logs
+   !rm -rf f"logs/flights_ontime/time_series/{hypermodel_func}"
 
-print('Input shape:', w1.example[0].shape)
-print('Output shape:', linear(w1.example[0]).shape)
+   # Define tuner
+   if tuner_type == 'random_search':
+      hypermodel_tuner = kt.RandomSearch(lambda hp: hypermodel_func(hp, model_name),
+                                         objective='val_loss',
+                                         max_trials=max_trials,
+                                         directory=f'logs/flights_ontime/time_series/{hypermodel_func}',
+                                         project_name='random_search_tuner')
+    
+   else:
+    hypermodel_tuner = kt.Hyperband(lambda hp: hypermodel_func(hp, model_name),
+                                    objective='val_loss',
+                                    max_epochs=epochs,
+                                    factor=3,
+                                    directory=f'logs/flights_ontime/time_series/{hypermodel_func}',
+                                    project_name='hyperband_tuner')
+    
+   # Get best hyperparameters
+   early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
+   hypermodel_tuner.search(window.train,
+                           epochs=epochs,
+                           validation_data=window.val,
+                           callbacks=[early_stopping])
+   best_hps = hypermodel_tuner.get_best_hyperparameters(num_trials=1)[0]
 
-# Design linear hypermodel
-def build_linear_model(hp):
+   # Build and train the model with the best hyperparameters
+   early_stopping = EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True)
+   Model = hypermodel_tuner.hypermodel.build(best_hps)
+   history = Model.fit(window.train,
+                       epochs=500,
+                       validation_data=window.val,
+                       callbacks=[early_stopping],
+                       verbose=0)
+     
+   # Validation set performance using Keras evaluate method
+   val_performance_dict[f'{model_name}_Keras_evaluate'] = {
+       'MSE': Model.evaluate(window.val, verbose=0)[0],
+       'MAE': Model.evaluate(window.val, verbose=0)[1],
+       'MAPE': Model.evaluate(window.val, verbose=0)[2]
+       }
+   
+   # Validation set performance using Sklearn metrics
+   y_true = np.concatenate([y for x, y in window.val], axis=0).reshape(-1,1)
+   y_pred = Model.predict(window.val).reshape(-1,1)
+   val_performance_dict[f'{model_name}_Sklearn'] = {
+      'MSE': mean_squared_error(y_true, y_pred),
+      'MAE': mean_absolute_error(y_true, y_pred),
+      'MAPE': mean_absolute_percentage_error(y_true, y_pred)
+      }
+   
+   # Save the model
+   models_dir = f'models/flights_ontime/{model_name}'
+   os.makedirs(models_dir, exist_ok=True)
+   Model.save(models_dir + f'/{model_name}.keras')
+   
+   return Model, val_performance_dict
+
+
+
+# %% DENSE NEURAL NETWORK (DNN) LINEAR HYPERMODEL
+def build_TimeSeriesDNNLinear(hp, model_name='default_model_name'):
+    input_neurons = hp.Int('neurons', min_value=1, max_value=64, step=1, default=1)
     learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=1e-3)
+    dropout_rate = hp.Float('dropout_rate', min_value=0.0, max_value=0.5, step=0.1, default=0.5)
     l2_reg = hp.Float('l2_reg', min_value=1e-5, max_value=1e-1, sampling='LOG', default=1e-2)
     
-    model = Sequential()
-    model.add(Dense(units=1, kernel_regularizer=L2(l2_reg)))
+    model = Sequential(name=model_name)
+    model.add(Dense(units=input_neurons, kernel_regularizer=L2(l2_reg)))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(units=1))
     model.compile(loss='mean_squared_error', 
                   optimizer=Adam(learning_rate=learning_rate),
                   metrics=[MeanAbsoluteError(), MeanAbsolutePercentageError()])
     return model
 
-# Design hyperband tuner
-DenseLinear_tuner_HB = kt.Hyperband(build_linear_model,
+# %% TUNE AND VALIDATE DNN LINEAR MODELS
+
+# One day window
+TimeSeriesDNNLinearW1, val_performance = tune_and_evaluate(window=w1, 
+                                                           model_name='TimeSeriesDNNLinearW1', 
+                                                           hypermodel_func=build_TimeSeriesDNNLinear, 
+                                                           val_performance_dict=val_performance)
+
+# Two day window
+TimeSeriesDNNLinearW2, val_performance = tune_and_evaluate(window=w2, 
+                                                           model_name='TimeSeriesDNNLinearW2', 
+                                                           hypermodel_func=build_TimeSeriesDNNLinear, 
+                                                           val_performance_dict=val_performance)
+
+# Three day window
+TimeSeriesDNNLinearW3, val_performance = tune_and_evaluate(window=w3,
+                                                            model_name='TimeSeriesDNNLinearW3',
+                                                            hypermodel_func=build_TimeSeriesDNNLinear,
+                                                            val_performance_dict=val_performance)
+
+# Seven day window
+TimeSeriesDNNLinearW7, val_performance = tune_and_evaluate(window=w7,
+                                                            model_name='TimeSeriesDNNLinearW7',
+                                                            hypermodel_func=build_TimeSeriesDNNLinear,
+                                                            val_performance_dict=val_performance)
+
+
+# %% Print Model Summaries and Validation Performance
+# Model Hyperparameters
+print("Time Series DNN Linear 1-day window", TimeSeriesDNNLinearW1.summary())
+print("Time Series DNN Linear 2-day window", TimeSeriesDNNLinearW2.summary())
+print("Time Series DNN Linear 3-day window", TimeSeriesDNNLinearW3.summary())
+print("Time Series DNN Linear 7-day window", TimeSeriesDNNLinearW7.summary())
+
+# Validation Performance
+print("Validation set performance:")
+print(pd.DataFrame(val_performance).T.round(2))
+
+# %% DNN linear hypermodel tuner
+TimeSeriesDNNLinear_tuner_HB = kt.Hyperband(build_TimeSeriesDNNLinear,
                         objective='val_loss',
                         max_epochs=100,
                         factor=3,
-                        directory='logs/flights_ontime/time_series/LinearDense',
+                        directory='logs/flights_ontime/time_series/TimeSeriesDNNLinear',
                         project_name='hyperband_tuner')
 
-# Get best hyperparameters for w1 model
-!rm -rf logs/flights_ontime/time_series/LinearDense
+# %% Tune Hyperparameters for DNN Linear w1 model
+!rm -rf logs/flights_ontime/time_series/TimeSeriesDNNLinear
 early_stopping_HB = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-DenseLinear_tuner_HB.search(w1.train, 
+TimeSeriesDNNLinear_tuner_HB.search(w1.train, 
              epochs=10, 
              validation_data=w1.val,
              callbacks=[early_stopping_HB])
-best_w1_hps = DenseLinear_tuner_HB.get_best_hyperparameters(num_trials=1)[0]
+best_w1_hps = TimeSeriesDNNLinear_tuner_HB.get_best_hyperparameters(num_trials=1)[0]
 
-# Build and train the best w1 model
-DenseLinear = DenseLinear_tuner_HB.hypermodel.build(best_w1_hps)
+# Print the best hyperparameters
+print(f"""
+The hyperparameter search is complete. The optimal number of neurons in the first layer is {best_w1_hps.get('neurons')},
+the optimal learning rate for the optimizer is {best_w1_hps.get('learning_rate')},
+the optimal dropout rate is {best_w1_hps.get('dropout_rate')},
+and the optimal L2 regularization rate is {best_w1_hps.get('l2_reg')}.
+""")
+
+# %% Build and Train the best DNN Linear w1 model
+
+TimeSeriesDNNLinear = TimeSeriesDNNLinear_tuner_HB.hypermodel.build(best_w1_hps)
 early_stopping = EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True)
-history = DenseLinear.fit(w1.train, 
+history = TimeSeriesDNNLinear.fit(w1.train, 
                     epochs=500, 
                     validation_data=w1.val, 
                     callbacks=[early_stopping],
                     verbose=0)
 
-# Dense linear model performance
+# TimeSeriesDNNLinear performance
 """
 I'm unable to get Sklearn's metrics to agree with those from Keras model.evaluate. I suspect 
 the y_true and y_pred are mis-aligned. Consequently, I removed the 'flights_ontime' target 
@@ -435,17 +539,17 @@ flights_ontime to other models without having to inverse transform the predictio
 calcluating metrics with Sklearn. I "think" the only downside is potentially slower model 
 fits.
 """
-val_performance['DenseLinear_Keras_evaluate'] = {
-    'MSE': DenseLinear.evaluate(w1.val, verbose=0)[0],
-    'MAE': DenseLinear.evaluate(w1.val, verbose=0)[1],
-    'MAPE': DenseLinear.evaluate(w1.val, verbose=0)[2]
+val_performance['TimeSeriesDNNLinear_Keras_evaluate'] = {
+    'MSE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[0],
+    'MAE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[1],
+    'MAPE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[2]
     }
 
 y_true = np.concatenate([y for x, y in w1.val], axis=0).reshape(-1,1)
-y_pred = DenseLinear.predict(w1.val).reshape(-1,1)
+y_pred = TimeSeriesDNNLinear.predict(w1.val).reshape(-1,1)
 
 
-val_performance['DenseLinear_Sklearn'] = {
+val_performance['TimeSeriesDNNLinear_Sklearn'] = {
     'MSE': mean_squared_error(y_true, y_pred),
     'MAE': mean_absolute_error(y_true, y_pred),
     'MAPE': mean_absolute_percentage_error(y_true, y_pred)
@@ -454,157 +558,83 @@ val_performance['DenseLinear_Sklearn'] = {
 print("Validation set performance:")
 print(pd.DataFrame(val_performance).T.round(2))
 # %% Dense Linear Model plot
-w28.plot(DenseLinear)
+w28.plot(TimeSeriesDNNLinear)
 
-# %% Long Short Term Memory (LSTM) hypermodel
+# %% Time Series Long Short Term Memory (LSTM) hypermodel
 # Build LSTM Hypermodel
-def build_lstm_model(hp):
+def build_TimeSeriesLSTM(hp):
     learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=1e-3)
     l2_reg = hp.Float('l2_reg', min_value=1e-5, max_value=1e-1, sampling='LOG', default=1e-2)
     
-    model = Sequential([tf.keras.layers.LSTM(64, return_sequences=True, kernel_regularizer=L2(l2_reg)),
-                        tf.keras.layers.Dense(units=1)])
+    model = Sequential([LSTM(units=64, 
+                             return_sequences=True, 
+                             kernel_regularizer=L2(l2_reg)),
+                        Dense(units=1)])
     model.compile(loss='mean_squared_error', 
                   optimizer=Adam(learning_rate=learning_rate),
                   metrics=[MeanAbsoluteError(), MeanAbsolutePercentageError()])
     return model
 
-# %% tune_and_evaluate Class
-def tune_and_evaluate(window, tuner_type='hyperband', epochs=100, patience=10, max_trials=100):
-   # clear logs
-    !rm -rf logs/flights_ontime/time_series/LSTM
+LSTM_hypermodel = build_TimeSeriesLSTM(kt.HyperParameters())
+LSTM_hypermodel.summary()
 
-    if tuner_type == 'random_search':
-        LSTM_tuner = kt.RandomSearch(build_lstm_model,
-                        objective='val_loss',
-                        max_trials=max_trials,
-                        directory='logs/flights_ontime/time_series/LSTM',
-                        project_name='random_search_tuner')
-    else:
-        LSTM_tuner = kt.Hyperband(build_lstm_model,
-                        objective='val_loss',
-                        max_epochs=epochs,
-                        factor=3,
-                        directory='logs/flights_ontime/time_series/LSTM',
-                        project_name='hyperband_tuner')
-        
-    # Get best hyperparameters
-    early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
-    LSTM_tuner.search(window.train,
-                        epochs=epochs,
-                        validation_data=window.val,
-                        callbacks=[early_stopping])
-    
-    best_hps = LSTM_tuner.get_best_hyperparameters(num_trials=1)[0]
-    LSTM_model = LSTM_tuner.hypermodel.build(best_hps)
-    history = LSTM_model.fit(window.train,
-                            epochs=500,
-                            validation_data=window.val,
-                            callbacks=[early_stopping],
-                            verbose=0)
-    
-    # LSTM model performance
-    LSTM_Keras_evaluate = {
-       'MSE': LSTM_model.evaluate(window.val, verbose=0)[0],
-       'MAE': LSTM_model.evaluate(window.val, verbose=0)[1],
-       'MAPE': LSTM_model.evaluate(window.val, verbose=0)[2]
-       }
-    
-    y_true = np.concatenate([y for x, y in window.val], axis=0).reshape(-1,1)
-    y_pred = LSTM_model.predict(window.val).reshape(-1,1)
 
-    LSTM_Sklearn = {
-        'MSE': mean_squared_error(y_true, y_pred),
-        'MAE': mean_absolute_error(y_true, y_pred),
-        'MAPE': mean_absolute_percentage_error(y_true, y_pred)
-        }
-    
-    return LSTM_model, LSTM_Keras_evaluate, LSTM_Sklearn
+# %% Tune and validate LSLTM models
+models_dir = 'models/flights_ontime/TimeSeriesLSTM'
+os.makedirs(models_dir, exist_ok=True)
 
-# %% Tune, evaluate, save LSTM models
-# %% LSTM Model performance (OLD)
+# One day window
+M, MKE, MSK = tune_and_evaluate(w1, build_TimeSeriesLSTM)
+M.save(models_dir + "/TimeSeriesLSTMw1.keras")
+val_performance['TimeSeriesLSTMw1_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw1_Sklearn'] = MSK
+
+# Two day window
+M, MKE, MSK = tune_and_evaluate(w2, build_TimeSeriesLSTM)
+M.save(models_dir + '/TimeSeriesLSTMw2.keras')
+val_performance['TimeSeriesLSTMw2_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw2_Sklearn'] = MSK
+
+# Three day window
+M, MKE, MSK = tune_and_evaluate(w3, build_TimeSeriesLSTM)
+M.save(models_dir + '/TimeSeriesLSTMw3.keras')
+val_performance['TimeSeriesLSTMw3_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw3_Sklearn'] = MSK
+
+# Seven day window
+M, MKE, MSK = tune_and_evaluate(w7, build_TimeSeriesLSTM)
+M.save(models_dir + '/TimeSeriesLSTMw7.keras')
+val_performance['TimeSeriesLSTMw7_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw7_Sklearn'] = MSK
+
+# Fourteen day window
+M, MKE, MSK = tune_and_evaluate(w14, build_TimeSeriesLSTM)
+M.save(models_dir + '/TimeSeriesLSTMw14.keras')
+val_performance['TimeSeriesLSTMw14_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw14_Sklearn'] = MSK
+
+# Twenty-eight day window
+M, MKE, MSK = tune_and_evaluate(w28, build_TimeSeriesLSTM)
+M.save(models_dir + '/TimeSeriesLSTMw28.keras')
+val_performance['TimeSeriesLSTMw28_Keras_evaluate'] = MKE
+val_performance['TimeSeriesLSTMw28_Sklearn'] = MSK
+
+# %% Print validation performance
 print("Validation set performance:")
-print(df.round(2))
+print(pd.DataFrame(val_performance).T.round(2))
 
+# %% Save validation performance metrics
+df = pd.DataFrame(val_performance).T
+df['model_library'] = df.index
+df['model_library'] = df['model_library'].str.replace('_evaluate', '')
+df[['model', 'library']] = df['model_library'].str.split('_', expand=True)
+df = df.drop(columns='model_library')
+df = df[['model', 'library', 'MSE', 'MAE', 'MAPE']]
+df = df.reset_index(drop=True)
+print(df)
 
+# %% Save validation performance metrics to csv
+output_dir = 'model_output/flights_ontime'
+df.to_csv(output_dir + '/TimeSeriesLSTM_results.csv')
+# %%
 
-
-
-# # %% Build tuners
-# # Delete logs directory
-# !rm -rf logs/flights_ontime/time_series/LSTM
-
-# # Hyperband tuner
-# LSTM_tuner_HB = kt.Hyperband(build_lstm_model,
-#                         objective='val_loss',
-#                         max_epochs=100,
-#                         factor=3,
-#                         directory='logs/flights_ontime/time_series/LSTM',
-#                         project_name='hyperband_tuner')
-
-# # Random Search tuner
-# LSTM_tuner_RS = kt.RandomSearch(build_lstm_model,
-#                         objective='val_loss',
-#                         max_trials=10,
-#                         directory='logs/flights_ontime/time_series/LSTM',
-#                         project_name='random_search_tuner')
-
-# # Hyperband hyperparameter search using w2 data
-# # early_stopping_HB = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-# # LSTM_tuner_HB.search(w2.train,
-# #                      epochs=10,
-# #                      validation_data=wide_window.val,
-# #                      callbacks=[early_stopping_HB])
-
-# # Random hyperparameter search using w2 data
-# early_stopping_RS = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-# LSTM_tuner_RS.search(w2.train,
-#                      epochs=100,
-#                      validation_data=w2.val,
-#                      callbacks=[early_stopping_RS])
-
-# # Get best hyperparameters for w2 model
-# best_w2_hps = LSTM_tuner_RS.get_best_hyperparameters(num_trials=1)[0]
-# LSTM_w2 = LSTM_tuner_RS.hypermodel.build(best_w2_hps)
-
-# # Train the best w2 model
-# early_stopping = EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True)
-# history = LSTM_w2.fit(w2.train, 
-#                     epochs=500, 
-#                     validation_data=w2.val, 
-#                     callbacks=[early_stopping],
-#                     verbose=0)
-
-# # LSTM_w2 model performance
-# val_performance['LSTM_Keras_evaluate'] = {
-#     'MSE': LSTM_w2.evaluate(w2.val, verbose=0)[0],
-#     'MAE': LSTM_w2.evaluate(w2.val, verbose=0)[1],
-#     'MAPE': LSTM_w2.evaluate(w2.val, verbose=0)[2]
-#     }
-
-# # Sanity check comparing Keras and Sklearn LSTM metrics
-# y_true = np.concatenate([y for x, y in w2.val], axis=0).reshape(-1,1)
-# y_pred = LSTM_w2.predict(w2.val).reshape(-1,1)
-
-# val_performance['LSTM_Sklearn'] = {
-#     'MSE': mean_squared_error(y_true, y_pred),
-#     'MAE': mean_absolute_error(y_true, y_pred),
-#     'MAPE': mean_absolute_percentage_error(y_true, y_pred)
-#     }
-
-# print("Validation set performance:")
-# print(pd.DataFrame(val_performance).T.round(2))
-# # %%
-# w28.plot(LSTM_w2)
-# # %%
-# # %% Save model and performance metrics
-# # Save model
-# LSTM_w2.save('models/flights_ontime/LSTM_w2')
-
-# # Save performance metrics
-# val_performance_df = pd.DataFrame(val_performance).T
-# val_performance_df.to_csv('models/flights_ontime/val_performance.csv')
-# # %%
-# # %% Load model and performance metrics
-# # Load model
-# LSTM_w2 = models.load_model('models/flights_ontime/LSTM_w2')
