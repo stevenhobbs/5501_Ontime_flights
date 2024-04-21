@@ -1,19 +1,14 @@
 #%% LIBRARIES
 import os
-# import datetime
-# import IPython
+import shutil
 
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-# import seaborn as sns
-# import random
 
-# from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
-
 
 import tensorflow as tf
 
@@ -22,8 +17,6 @@ from keras.layers import Dense, LSTM
 from keras.layers import Dense, LSTM, Dropout
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping
-# from keras.utils import timeseries_dataset_from_array
-# from keras.utils import plot_model
 from keras.regularizers import L2
 from keras.metrics import MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError
 
@@ -208,7 +201,7 @@ class WindowGenerator():
 
     return inputs, labels
   
-  def plot(self, model=None, plot_col='flights_ontime', max_subplots=3):
+  def plot(self, model="", plot_col='flights_ontime', max_subplots=3, filepath="", filename='default_plot.png'):
     """
     Given a model and a column to plot, the method plots the inputs, labels, and predictions
 
@@ -219,9 +212,9 @@ class WindowGenerator():
 
     Returns:
     """
+    assert filepath != "", "Filepath to save the plot must be provided"
 
     inputs, labels = self.example
-
     plt.figure(figsize=(12, 8))
     plot_col_index = self.column_indices[plot_col]
     max_n = min(max_subplots, len(inputs))
@@ -247,7 +240,7 @@ class WindowGenerator():
                     edgecolors='k', label='Labels', c='#2ca02c', s=64)
         
         # Plot predictions
-        if model is not None:
+        if model:
             predictions = model(inputs)
             plt.scatter(self.label_indices, predictions[n, :, label_col_index],
                         marker='X', edgecolors='k', label='Predictions',
@@ -256,7 +249,22 @@ class WindowGenerator():
         if n == 0:
             plt.legend()
 
+    
+    # Make the destination directory if it does not exist
+    if model:
+       print(f"Model name: {model.name}")
+       directory = filepath + f"{model.name}/"
+       print(f"Saving plot to {directory}")
+    else:
+       print("Model name: None")
+       directory = filepath
+       print(f"Saving plot to {directory}")
+    
+    os.makedirs(directory, exist_ok=True)
+
     plt.xlabel('Time [days]')
+    plt.savefig(directory + filename)
+    plt.close() # Close the plot to free up memory
     
   def make_dataset(self,data, seed=42):
     data = np.array(data, dtype=np.float32)
@@ -325,7 +333,9 @@ print(f'w7 shape: {example_batch.shape}')
 print(f'Inputs shape: {example_inputs.shape}')
 print(f'Labels shape: {example_labels.shape}')
 # %% EXAMPLE PLOT OF INPUTS AND LABELS FOR 7-DAY WINDOW
-w7.plot()
+output_dir = "output/flights_ontime/TF_Time_Series/"
+w7.plot(filepath=output_dir, filename = "w7_inputs_and_labels_example_plot.png")
+
 # %% BASELINE FORECASTING
 """
 The `Baseline` class inherits from `keras.Model` and uses the current value of a 
@@ -334,7 +344,7 @@ information. We hope to beat this model with a LSTM recurrent network that
 considers current and recent values of the label and other features.
 """
 
-class Baseline(tf.keras.Model):
+class BaselineNaive(tf.keras.Model):
   def __init__(self, label_index=None):
     super().__init__()
     self.label_index = label_index
@@ -345,42 +355,55 @@ class Baseline(tf.keras.Model):
     result = inputs[:, :, self.label_index]
     return result[:, :, tf.newaxis]
 
-baseline = Baseline(label_index=column_indices['flights_ontime'])
+BaselineNaive = BaselineNaive(label_index=column_indices['flights_ontime'])
 
-baseline.compile(loss=MeanSquaredError(),
+BaselineNaive.compile(loss=MeanSquaredError(),
                  metrics=[MeanAbsoluteError(), MeanSquaredError(), MeanAbsolutePercentageError()])
 
-baseline_results = baseline.evaluate(w1.val, verbose=0)
+BaselineNaive_results = BaselineNaive.evaluate(w1.val, verbose=0)
 
 val_performance = {
-   'baseline_Keras_evaluate': {
-      'MSE': baseline_results[3],
-      'MAE': baseline_results[1],
-      'MAPE': baseline_results[2],
+   'BaselineNaive_Keras_evaluate': {
+      'MSE': BaselineNaive_results[3],
+      'MAE': BaselineNaive_results[1],
+      'MAPE': BaselineNaive_results[2],
    }
 }
 
-# Sanity check comparing Keras and Sklearn baseline metrics
+# Sanity check comparing Keras and Sklearn BaselineNaive metrics
 y_true = val_df['flights_ontime'].iloc[:-1]
 y_pred = val_df['flights_ontime'].shift(-1).dropna()
 
-val_performance['baseline_Sklearn'] = {
+val_performance['BaselineNaive_Sklearn'] = {
     'MSE': mean_squared_error(y_true, y_pred),
     'MAE': mean_absolute_error(y_true, y_pred),
     'MAPE': mean_absolute_percentage_error(y_true, y_pred),
 }
 
-print("Baseline validation performance:")
+print("BaselineNaive validation performance:")
 print(pd.DataFrame(val_performance).T.round(2))
 
 
 # %% BASELINE PLOT
-w28.plot(baseline)
+# w7.plot(model=baseline, filepath=output_dir, filename='w7_baseline_plot.png')
+w28.plot(model=BaselineNaive, filepath=output_dir, filename='w28_baseline_naive_plot.png')
 
 # %% DEFINE TUNE_AND_EVALUATE FUNCTION
+
+"""
+I'm unable to get Sklearn's metrics to agree with Keras model.evaluate when modeling with
+a scaler-transformed target. I suspect the windowing function is causing y_true and the 
+inverse-transformed y_pred are mis-aligned. Consequently, I removed the 'flights_ontime' target 
+from the preprocessor scaler, so that the MSE, MAE, and MAPE from the evaluate method are 
+based on the raw data scale, without inverse-transforming the predictions. I "think" the only 
+downside is potentially slower model fits.
+"""
 def tune_and_evaluate(window, model_name, hypermodel_func, val_performance_dict, tuner_type='hyperband', epochs=100, patience=10, max_trials=100):
    # clear logs
-   !rm -rf f"logs/flights_ontime/time_series/{hypermodel_func}"
+   logs_dir = f"logs/flights_ontime/time_series/{hypermodel_func}"
+   if os.path.exists(logs_dir):
+      shutil.remtree(logs_dir)
+      os.makedirs(logs_dir)
 
    # Define tuner
    if tuner_type == 'random_search':
@@ -438,9 +461,8 @@ def tune_and_evaluate(window, model_name, hypermodel_func, val_performance_dict,
    
    return Model, val_performance_dict
 
-
-
 # %% DENSE NEURAL NETWORK (DNN) LINEAR HYPERMODEL
+
 def build_TimeSeriesDNNLinear(hp, model_name='default_model_name'):
     input_neurons = hp.Int('neurons', min_value=1, max_value=64, step=1, default=1)
     learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=1e-3)
@@ -494,75 +516,9 @@ print("Time Series DNN Linear 7-day window", TimeSeriesDNNLinearW7.summary())
 print("Validation set performance:")
 print(pd.DataFrame(val_performance).T.round(2))
 
-# %% DNN linear hypermodel tuner
-TimeSeriesDNNLinear_tuner_HB = kt.Hyperband(build_TimeSeriesDNNLinear,
-                        objective='val_loss',
-                        max_epochs=100,
-                        factor=3,
-                        directory='logs/flights_ontime/time_series/TimeSeriesDNNLinear',
-                        project_name='hyperband_tuner')
-
-# %% Tune Hyperparameters for DNN Linear w1 model
-!rm -rf logs/flights_ontime/time_series/TimeSeriesDNNLinear
-early_stopping_HB = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-TimeSeriesDNNLinear_tuner_HB.search(w1.train, 
-             epochs=10, 
-             validation_data=w1.val,
-             callbacks=[early_stopping_HB])
-best_w1_hps = TimeSeriesDNNLinear_tuner_HB.get_best_hyperparameters(num_trials=1)[0]
-
-# Print the best hyperparameters
-print(f"""
-The hyperparameter search is complete. The optimal number of neurons in the first layer is {best_w1_hps.get('neurons')},
-the optimal learning rate for the optimizer is {best_w1_hps.get('learning_rate')},
-the optimal dropout rate is {best_w1_hps.get('dropout_rate')},
-and the optimal L2 regularization rate is {best_w1_hps.get('l2_reg')}.
-""")
-
-# %% Build and Train the best DNN Linear w1 model
-
-TimeSeriesDNNLinear = TimeSeriesDNNLinear_tuner_HB.hypermodel.build(best_w1_hps)
-early_stopping = EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True)
-history = TimeSeriesDNNLinear.fit(w1.train, 
-                    epochs=500, 
-                    validation_data=w1.val, 
-                    callbacks=[early_stopping],
-                    verbose=0)
-
-# TimeSeriesDNNLinear performance
-"""
-I'm unable to get Sklearn's metrics to agree with those from Keras model.evaluate. I suspect 
-the y_true and y_pred are mis-aligned. Consequently, I removed the 'flights_ontime' target 
-from the preprocessor scaler, so that the MSE, MAE, and MAPE from the evaluate method are 
-based on the raw data scale. This means we can compare Keras models for predicting 
-flights_ontime to other models without having to inverse transform the predictions before 
-calcluating metrics with Sklearn. I "think" the only downside is potentially slower model 
-fits.
-"""
-val_performance['TimeSeriesDNNLinear_Keras_evaluate'] = {
-    'MSE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[0],
-    'MAE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[1],
-    'MAPE': TimeSeriesDNNLinear.evaluate(w1.val, verbose=0)[2]
-    }
-
-y_true = np.concatenate([y for x, y in w1.val], axis=0).reshape(-1,1)
-y_pred = TimeSeriesDNNLinear.predict(w1.val).reshape(-1,1)
-
-
-val_performance['TimeSeriesDNNLinear_Sklearn'] = {
-    'MSE': mean_squared_error(y_true, y_pred),
-    'MAE': mean_absolute_error(y_true, y_pred),
-    'MAPE': mean_absolute_percentage_error(y_true, y_pred)
-    }
-
-print("Validation set performance:")
-print(pd.DataFrame(val_performance).T.round(2))
-# %% Dense Linear Model plot
-w28.plot(TimeSeriesDNNLinear)
-
 # %% Time Series Long Short Term Memory (LSTM) hypermodel
 # Build LSTM Hypermodel
-def build_TimeSeriesLSTM(hp):
+def build_TimeSeriesLSTM(hp, model_name='default_model_name'):
     learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=1e-3)
     l2_reg = hp.Float('l2_reg', min_value=1e-5, max_value=1e-1, sampling='LOG', default=1e-2)
     
@@ -580,61 +536,51 @@ LSTM_hypermodel.summary()
 
 
 # %% Tune and validate LSLTM models
-models_dir = 'models/flights_ontime/TimeSeriesLSTM'
-os.makedirs(models_dir, exist_ok=True)
-
 # One day window
-M, MKE, MSK = tune_and_evaluate(w1, build_TimeSeriesLSTM)
-M.save(models_dir + "/TimeSeriesLSTMw1.keras")
-val_performance['TimeSeriesLSTMw1_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw1_Sklearn'] = MSK
+TimeSeriesLSTMW1, val_performance = tune_and_evaluate(window=w1,
+                                                      model_name='TimeSeriesLSTMW1',
+                                                      hypermodel_func=build_TimeSeriesLSTM,
+                                                      val_performance_dict=val_performance)
 
 # Two day window
-M, MKE, MSK = tune_and_evaluate(w2, build_TimeSeriesLSTM)
-M.save(models_dir + '/TimeSeriesLSTMw2.keras')
-val_performance['TimeSeriesLSTMw2_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw2_Sklearn'] = MSK
+TimeSeriesLSTMW2, val_performance = tune_and_evaluate(window=w2,
+                                                      model_name='TimeSeriesLSTMW2',
+                                                      hypermodel_func=build_TimeSeriesLSTM,
+                                                      val_performance_dict=val_performance)
 
 # Three day window
-M, MKE, MSK = tune_and_evaluate(w3, build_TimeSeriesLSTM)
-M.save(models_dir + '/TimeSeriesLSTMw3.keras')
-val_performance['TimeSeriesLSTMw3_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw3_Sklearn'] = MSK
+TimeSeriesLSTMW3, val_performance = tune_and_evaluate(window=w3,
+                                                      model_name='TimeSeriesLSTMW3',
+                                                      hypermodel_func=build_TimeSeriesLSTM,
+                                                      val_performance_dict=val_performance)
 
 # Seven day window
-M, MKE, MSK = tune_and_evaluate(w7, build_TimeSeriesLSTM)
-M.save(models_dir + '/TimeSeriesLSTMw7.keras')
-val_performance['TimeSeriesLSTMw7_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw7_Sklearn'] = MSK
+TimeSeriesLSTMW7, val_performance = tune_and_evaluate(window=w7,
+                                                      model_name='TimeSeriesLSTMW7',
+                                                      hypermodel_func=build_TimeSeriesLSTM,
+                                                      val_performance_dict=val_performance)
 
-# Fourteen day window
-M, MKE, MSK = tune_and_evaluate(w14, build_TimeSeriesLSTM)
-M.save(models_dir + '/TimeSeriesLSTMw14.keras')
-val_performance['TimeSeriesLSTMw14_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw14_Sklearn'] = MSK
+# Fourteen day window 
+TimeSeriesLSTMW14, val_performance = tune_and_evaluate(window=w14,
+                                                       model_name='TimeSeriesLSTMW14',
+                                                       hypermodel_func=build_TimeSeriesLSTM,
+                                                       val_performance_dict=val_performance)
 
 # Twenty-eight day window
-M, MKE, MSK = tune_and_evaluate(w28, build_TimeSeriesLSTM)
-M.save(models_dir + '/TimeSeriesLSTMw28.keras')
-val_performance['TimeSeriesLSTMw28_Keras_evaluate'] = MKE
-val_performance['TimeSeriesLSTMw28_Sklearn'] = MSK
+TimeSeriesLSTMW28, val_performance = tune_and_evaluate(window=w28,
+                                                       model_name='TimeSeriesLSTMW28',
+                                                       hypermodel_func=build_TimeSeriesLSTM,
+                                                       val_performance_dict=val_performance)
 
-# %% Print validation performance
+# %% Print Model Summaries and Validation Performance
+# Model Hyperparameters
+print("Time Series LSTM 1-day window", TimeSeriesLSTMW1.summary())
+print("Time Series LSTM 2-day window", TimeSeriesLSTMW2.summary())
+print("Time Series LSTM 3-day window", TimeSeriesLSTMW3.summary())
+print("Time Series LSTM 7-day window", TimeSeriesLSTMW7.summary())
+print("Time Series LSTM 14-day window", TimeSeriesLSTMW14.summary())
+print("Time Series LSTM 28-day window", TimeSeriesLSTMW28.summary())
+
+# Validation Performance
 print("Validation set performance:")
 print(pd.DataFrame(val_performance).T.round(2))
-
-# %% Save validation performance metrics
-df = pd.DataFrame(val_performance).T
-df['model_library'] = df.index
-df['model_library'] = df['model_library'].str.replace('_evaluate', '')
-df[['model', 'library']] = df['model_library'].str.split('_', expand=True)
-df = df.drop(columns='model_library')
-df = df[['model', 'library', 'MSE', 'MAE', 'MAPE']]
-df = df.reset_index(drop=True)
-print(df)
-
-# %% Save validation performance metrics to csv
-output_dir = 'model_output/flights_ontime'
-df.to_csv(output_dir + '/TimeSeriesLSTM_results.csv')
-# %%
-
