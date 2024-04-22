@@ -1,0 +1,139 @@
+Courtesy Notice: Pipenv found itself running within a virtual environment, so it will automatically use that environment, instead of creating its own for any project. You can set PIPENV_IGNORE_VIRTUALENVS=1 to force pipenv to ignore that environment and create its own instead. You can set PIPENV_VERBOSITY=-1 to suppress this warning.
+2024-04-22 09:54:37.102996: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2024-04-22 09:54:37.108530: I external/local_tsl/tsl/cuda/cudart_stub.cc:32] Could not find cuda drivers on your machine, GPU will not be used.
+2024-04-22 09:54:37.175769: I external/local_tsl/tsl/cuda/cudart_stub.cc:32] Could not find cuda drivers on your machine, GPU will not be used.
+2024-04-22 09:54:37.480887: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-04-22 09:54:39.240187: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/home/shobbs/.local/share/virtualenvs/predicting_flight_traffic-GXhvlkip/lib/python3.11/site-packages/keras/src/saving/saving_lib.py:396: UserWarning: Skipping variable loading for optimizer 'adam', because it has 2 variables whereas the saved optimizer has 10 variables. 
+  trackable.load_own_variables(weights_store.get(inner_path))
+2024-04-22 10:06:20.648329: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+Unique data types in df
+float64    40
+object     11
+int64       7
+float32     4
+int32       2
+Name: count, dtype: int64
+
+Categorical columns: ['covid', 'month', 'day_of_week', 'season', 'holiday', 'halloween', 'xmas_eve', 'new_years_eve', 'jan_2', 'jan_3', 'day_before_easter']
+Numeric columns: ['ordinal_date', 'year', 'day_of_month', 'days_until_xmas', 'days_until_thanksgiving', 'days_until_july_4th', 'days_until_labor_day', 'days_until_memorial_day', 'flights_cancel', 'flights_delay', 'flights_ontime', 'flights_arr', 'flights_dep', 'flights_arr_A', 'flights_arr_B', 'flights_arr_C', 'flights_arr_D', 'flights_arr_E', 'flights_dep_A', 'flights_dep_B', 'flights_dep_C', 'flights_dep_D', 'flights_dep_E', 'flights_arr_cancel', 'flights_arr_delay', 'flights_arr_ontime', 'flights_dep_cancel', 'flights_dep_delay', 'flights_dep_ontime', 'wx_temperature_max', 'wx_temperature_min', 'wx_apcp', 'wx_prate', 'wx_asnow', 'wx_frozr', 'wx_vis', 'wx_gust', 'wx_maxref', 'wx_cape', 'wx_lftx', 'wx_wind_speed', 'wx_wind_direction', 'flights_total', 'flights_cancel_pct', 'flights_delay_pct', 'flights_ontime_pct', 'flights_arr_delay_pct', 'flights_arr_ontime_pct', 'flights_arr_cancel_pct', 'flights_dep_delay_pct', 'flights_dep_ontime_pct', 'flights_dep_cancel_pct', 'random']
+
+All columns accounted for: True
+Train data preprocessed shape: (1179, 64)
+Validation preprocessed data shape: (337, 64)
+Test data preprocessed shape: (169, 64)
+
+Number of columns before preprocessing: 64
+Number of features after preprocessing: 105
+Window shapes are: (batch size, time steps, features)
+w7 shape: (3, 8, 105)
+Inputs shape: (3, 7, 105)
+Labels shape: (3, 7, 1)
+Model name: None
+Saving plot to output/flights_ontime/TF_Time_Series/
+BaselineNaive validation performance:
+                                   MSE    MAE   MAPE
+BaselineNaive_Keras_evaluate  46363.16  140.4  14.13
+BaselineNaive_Sklearn         46363.15  140.4   0.13
+Model name: baseline_naive
+Saving plot to output/flights_ontime/TF_Time_Series/baseline_naive/
+[1m 1/11[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m0s[0m 76ms/step[1m11/11[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 2ms/step 
+/home/shobbs/.local/share/virtualenvs/predicting_flight_traffic-GXhvlkip/lib/python3.11/site-packages/keras/src/saving/saving_lib.py:396: UserWarning: Skipping variable loading for optimizer 'adam', because it has 2 variables whereas the saved optimizer has 10 variables. 
+  trackable.load_own_variables(weights_store.get(inner_path))
+2024-04-22 10:17:42.080940: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+[1m 1/11[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m0s[0m 76ms/step[1m11/11[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 2ms/step 
+/home/shobbs/.local/share/virtualenvs/predicting_flight_traffic-GXhvlkip/lib/python3.11/site-packages/keras/src/saving/saving_lib.py:396: UserWarning: Skipping variable loading for optimizer 'adam', because it has 2 variables whereas the saved optimizer has 10 variables. 
+  trackable.load_own_variables(weights_store.get(inner_path))
+2024-04-22 10:30:42.787333: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+[1m 1/11[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m0s[0m 74ms/step[1m11/11[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 2ms/step 
+/home/shobbs/.local/share/virtualenvs/predicting_flight_traffic-GXhvlkip/lib/python3.11/site-packages/keras/src/saving/saving_lib.py:396: UserWarning: Skipping variable loading for optimizer 'adam', because it has 2 variables whereas the saved optimizer has 10 variables. 
+  trackable.load_own_variables(weights_store.get(inner_path))
+2024-04-22 10:41:57.510105: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+[1m 1/11[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m0s[0m 72ms/step[1m11/11[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 2ms/step 
+Model: "TimeSeriesDNNLinearW1"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ dense_2 (Dense)                 │ (None, 1, 31)          │         3,286 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dropout_1 (Dropout)             │ (None, 1, 31)          │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dense_3 (Dense)                 │ (None, 1, 1)           │            32 │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 9,956 (38.89 KB)
+ Trainable params: 3,318 (12.96 KB)
+ Non-trainable params: 0 (0.00 B)
+ Optimizer params: 6,638 (25.93 KB)
+Time Series DNN Linear 1-day window None
+Model: "TimeSeriesDNNLinearW2"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ dense_2 (Dense)                 │ (None, 2, 46)          │         4,876 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dropout_1 (Dropout)             │ (None, 2, 46)          │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dense_3 (Dense)                 │ (None, 2, 1)           │            47 │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 14,771 (57.70 KB)
+ Trainable params: 4,923 (19.23 KB)
+ Non-trainable params: 0 (0.00 B)
+ Optimizer params: 9,848 (38.47 KB)
+Time Series DNN Linear 2-day window None
+Model: "TimeSeriesDNNLinearW3"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ dense_2 (Dense)                 │ (None, 3, 21)          │         2,226 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dropout_1 (Dropout)             │ (None, 3, 21)          │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dense_3 (Dense)                 │ (None, 3, 1)           │            22 │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 6,746 (26.36 KB)
+ Trainable params: 2,248 (8.78 KB)
+ Non-trainable params: 0 (0.00 B)
+ Optimizer params: 4,498 (17.57 KB)
+Time Series DNN Linear 3-day window None
+Model: "TimeSeriesDNNLinearW7"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ dense_2 (Dense)                 │ (None, 7, 34)          │         3,604 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dropout_1 (Dropout)             │ (None, 7, 34)          │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dense_3 (Dense)                 │ (None, 7, 1)           │            35 │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 10,919 (42.66 KB)
+ Trainable params: 3,639 (14.21 KB)
+ Non-trainable params: 0 (0.00 B)
+ Optimizer params: 7,280 (28.44 KB)
+Time Series DNN Linear 7-day window None
+Validation set performance:
+                                           MSE     MAE   MAPE
+BaselineNaive_Keras_evaluate          46363.16  140.40  14.13
+BaselineNaive_Sklearn                 46363.15  140.40   0.13
+TimeSeriesDNNLinearW1_Keras_evaluate  31930.80  118.50  12.88
+TimeSeriesDNNLinearW1_Sklearn         33128.62  118.50   0.13
+TimeSeriesDNNLinearW2_Keras_evaluate  34610.56  121.60  13.01
+TimeSeriesDNNLinearW2_Sklearn         33115.71  121.60   0.13
+TimeSeriesDNNLinearW3_Keras_evaluate  34552.77  123.83  13.11
+TimeSeriesDNNLinearW3_Sklearn         33272.92  123.83   0.13
+TimeSeriesDNNLinearW7_Keras_evaluate  33256.17  119.13  13.03
+TimeSeriesDNNLinearW7_Sklearn         33523.01  119.13   0.13
+Model: "sequential"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ lstm (LSTM)                     │ ?                      │   0 (unbuilt) │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ dense_4 (Dense)                 │ ?                      │   0 (unbuilt) │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 0 (0.00 B)
+ Trainable params: 0 (0.00 B)
+ Non-trainable params: 0 (0.00 B)
+/home/shobbs/.local/share/virtualenvs/predicting_flight_traffic-GXhvlkip/lib/python3.11/site-packages/keras/src/saving/saving_lib.py:396: UserWarning: Skipping variable loading for optimizer 'adam', because it has 2 variables whereas the saved optimizer has 12 variables. 
+  trackable.load_own_variables(weights_store.get(inner_path))
+slurmstepd: error: *** JOB 3533268 ON x1005c0s6b0n1 CANCELLED AT 2024-04-22T10:55:00 DUE TO TIME LIMIT ***

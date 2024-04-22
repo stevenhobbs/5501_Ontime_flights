@@ -402,7 +402,7 @@ def tune_and_evaluate(window, model_name, hypermodel_func, val_performance_dict,
    # clear logs
    logs_dir = f"logs/flights_ontime/time_series/{hypermodel_func}"
    if os.path.exists(logs_dir):
-      shutil.remtree(logs_dir)
+      shutil.rmtree(logs_dir)
       os.makedirs(logs_dir)
 
    # Define tuner
@@ -426,7 +426,8 @@ def tune_and_evaluate(window, model_name, hypermodel_func, val_performance_dict,
    hypermodel_tuner.search(window.train,
                            epochs=epochs,
                            validation_data=window.val,
-                           callbacks=[early_stopping])
+                           callbacks=[early_stopping],
+                           verbose=0)
    best_hps = hypermodel_tuner.get_best_hyperparameters(num_trials=1)[0]
 
    # Build and train the model with the best hyperparameters
