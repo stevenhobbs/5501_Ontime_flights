@@ -133,7 +133,7 @@ bayes_search = BayesSearchCV(
 # %% Tune and fit prediction models
 LR_prediction_models = {}
 convergence_issues = {}
-models_dir = "models/flights_ontime/LR_prediction"
+models_dir = "models/daily/LR_prediction"
 os.makedirs(models_dir, exist_ok=True)
 
 for target in flights_prediction_cols:
@@ -172,7 +172,7 @@ for target, model in LR_prediction_models.items():
 # %% Tune and fit forecast models
 LR_24h_forecast_models = {}
 convergence_issues = {}
-models_dir = "models/flights_ontime/LR_24h_forecasts"
+models_dir = "models/daily/LR_24h_forecasts"
 os.makedirs(models_dir, exist_ok=True)
 
 for target in flights_forecast_cols:
@@ -225,8 +225,9 @@ for target, model in LR_prediction_models.items():
                                     ignore_index=True)
     
 # Save prediction results to csv
-os.makedirs("model_output/daily/LR/LR_prediction.csv", exist_ok=True)
-LR_results.to_csv("model_output/daily/LR/LR_prediction.csv", index=False)
+output_dir = "model_output/daily/LR"
+os.makedirs(output_dir, exist_ok=True)
+LR_results.to_csv(output_dir + "/LR_prediction.csv", index=False)
 print(LR_results)
 
 # %% Linear regression forecast results
@@ -247,6 +248,5 @@ for target, model in LR_24h_forecast_models.items():
                                     ignore_index=True)
     
 # Save forecast results to csv
-os.makedirs("model_output/daily/LR/LR_forecast.csv", exist_ok=True)
-LR_forecast_results.to_csv("model_output/daily/LR/LR_forecast.csv", index=False)
+LR_forecast_results.to_csv(output_dir + "/LR_forecast.csv", index=False)
 print(LR_forecast_results)
