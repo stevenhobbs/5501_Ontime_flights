@@ -21,7 +21,10 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.exceptions import ConvergenceWarning
+
 import warnings
+from sklearn.exceptions import ConvergenceWarning
+warnings.simplefilter('ignore', ConvergenceWarning)
 
 from skopt import BayesSearchCV
 from skopt.space import Real, Categorical, Integer
@@ -107,6 +110,10 @@ LR__transformer = ColumnTransformer(
     ])
 
 # %% LR pipeline with elastic net regularization pipeline
+
+# l1_ration and alpha have default values of 0.5 and 1.0, but will be tuned
+# using value ranges set in search_spaces.
+
 LR_pipeline = make_pipeline(
     LR__transformer,
     ElasticNet(alpha=10, 
@@ -213,6 +220,7 @@ LR_results = pd.DataFrame(columns=['TARGET', 'ALPHA', 'L1L2', 'R2', 'MAE', 'MSE'
 
 # Prediction results
 for target, model in LR_prediction_models.items():
+    target = target.replace("LR_prediction_", "")
     alpha = model.named_steps['elasticnet'].get_params()['alpha']
     l1_ratio = model.named_steps['elasticnet'].get_params()['l1_ratio']
     y_pred = model.predict(X_val)
@@ -236,6 +244,7 @@ LR_forecast_results = pd.DataFrame(columns=['TARGET', 'ALPHA', 'L1L2', 'R2', 'MA
 
 # Forecast results
 for target, model in LR_24h_forecast_models.items():
+    target = target.replace("LR_24h_forecast_", "")
     alpha = model.named_steps['elasticnet'].get_params()['alpha']
     l1_ratio = model.named_steps['elasticnet'].get_params()['l1_ratio']
     y_pred = model.predict(X_val)
