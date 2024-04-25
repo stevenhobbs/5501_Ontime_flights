@@ -29,7 +29,9 @@ mpl.rcParams['axes.grid'] = False
 # %% IMPORT DATA AND DEFINE COLUMN GROUPS
 DAILY_DATA_PATH = "data.v3/daily" 
 
-df = pd.read_parquet(os.path.join(DAILY_DATA_PATH, "daily_flights_and_weather_merged.parquet"))
+# df = pd.read_parquet(os.path.join(DAILY_DATA_PATH, "daily_flights_and_weather_merged.parquet"))
+df = pd.read_parquet(DAILY_DATA_PATH + "/daily_flights_and_weather_merged.parquet")
+
 
 # Flights column groups
 flights_terminal_cols = ['flights_arr_A', 'flights_arr_B', 'flights_arr_C', 'flights_arr_D', 'flights_arr_E',
@@ -43,36 +45,41 @@ flights_percentage_cols = ['flights_cancel_pct', 'flights_delay_pct', 'flights_o
                             'flights_arr_delay_pct', 'flights_arr_ontime_pct', 'flights_arr_cancel_pct',
                             'flights_dep_delay_pct', 'flights_dep_ontime_pct', 'flights_dep_cancel_pct']
 
+flights_prediction_cols = flights_non_terminal_cols + flights_percentage_cols
+flights_forecast_cols = [f"{col}_next_day" for col in flights_prediction_cols]
+
 # Date column groups
-date_cols = ['date', 'covid', 'ordinal_date', 'year', 'month', 'day_of_month', 'day_of_week', 'season', 'holiday', 'halloween', 'xmas_eve', 'new_years_eve', 'jan_2', 'jan_3', 'day_before_easter', 'days_until_xmas', 'days_until_thanksgiving', 'days_until_july_4th', 'days_until_labor_day', 'days_until_memorial_day']
+date_cols = ['covid', 'ordinal_date', 'year', 'month', 'day_of_month', 'day_of_week', 'season', 'holiday', 'halloween', 'xmas_eve', 'new_years_eve', 'jan_2', 'jan_3', 'day_before_easter', 'days_until_xmas', 'days_until_thanksgiving', 'days_until_july_4th', 'days_until_labor_day', 'days_until_memorial_day']
 
 # Weather column groups
 weather_cols = ['wx_temperature_max', 'wx_temperature_min', 'wx_apcp', 'wx_prate', 'wx_asnow', 'wx_frozr', 'wx_vis', 'wx_gust', 'wx_maxref', 'wx_cape', 'wx_lftx', 'wx_wind_speed', 'wx_wind_direction']
+weather_cols_s2 = ['wx_temperature_max_s2', 'wx_temperature_min_s2', 'wx_apcp_s2', 'wx_prate_s2', 'wx_asnow_s2', 'wx_frozr_s2', 'wx_vis_s2', 'wx_gust_s2', 'wx_maxref_s2', 'wx_cape_s2', 'wx_lftx_s2', 'wx_wind_speed_s2', 'wx_wind_direction_s2']
 
 # Lag column groups
 lag_cols =  ['flights_cancel_lag_1', 'flights_cancel_lag_2', 'flights_cancel_lag_3', 'flights_cancel_lag_4', 'flights_cancel_lag_5', 'flights_cancel_lag_6', 'flights_cancel_lag_7',
              'flights_delay_lag_1', 'flights_delay_lag_2', 'flights_delay_lag_3', 'flights_delay_lag_4', 'flights_delay_lag_5', 'flights_delay_lag_6', 'flights_delay_lag_7',
-             'flights_ontime_lag_1', 'flights_ontime_lag_2', 'flights_ontime_lag_3', 'flights_ontime_lag_4', 'flights_ontime_lag_5', 'flights_ontime_lag_6', 'flights_ontime_lag_7',]
-
+             'flights_ontime_lag_1', 'flights_ontime_lag_2', 'flights_ontime_lag_3', 'flights_ontime_lag_4', 'flights_ontime_lag_5', 'flights_ontime_lag_6', 'flights_ontime_lag_7']
+# %% Select columns for LSTM modeling
 # Drop lag columns and date from data
-df = df.drop(columns=lag_cols + ['date'])
+LSTM_df = df[date_cols + flights_prediction_cols + weather_cols + weather_cols_s2]
 
-print("Unique data types in df", df.dtypes.value_counts(), sep = '\n')
+print("Unique data types in LSTM_df", LSTM_df.dtypes.value_counts(), sep = '\n')
+
 
 # Identify categorical and numeric columns in df
-categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-numeric_cols = df.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
-num_features = df.shape[1]
+categorical_cols = LSTM_df.select_dtypes(include=['object', 'category']).columns.tolist()
+numeric_cols = LSTM_df.select_dtypes(include = ['float64', 'float32', 'int32', 'int64']).columns.tolist()
+num_features = LSTM_df.shape[1]
 
 print(f"\nCategorical columns: {categorical_cols}")
 print(f"Numeric columns: {numeric_cols}")
 print(f"\nAll columns accounted for: {len(categorical_cols) + len(numeric_cols) == num_features}")
 
 # %% SPLIT DATA SEQUENTIALLY 70-20-10
-n = len(df)
-train_raw = df[0:int(n*0.7)]
-val_raw = df[int(n*0.7):int(n*0.9)]
-test_raw = df[int(n*0.9):]
+n = len(LSTM_df)
+train_raw = LSTM_df[0:int(n*0.7)]
+val_raw = LSTM_df[int(n*0.7):int(n*0.9)]
+test_raw = LSTM_df[int(n*0.9):]
 
 # print data shapes
 print(f"Train data preprocessed shape: {train_raw.shape}")
@@ -585,3 +592,5 @@ print("Time Series LSTM 28-day window", TimeSeriesLSTMW28.summary())
 # Validation Performance
 print("Validation set performance:")
 print(pd.DataFrame(val_performance).T.round(2))
+
+# %%
