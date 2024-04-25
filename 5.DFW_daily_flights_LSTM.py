@@ -25,6 +25,8 @@ import keras_tuner as kt
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 
+import warnings
+warnings.filterwarnings('ignore')
 
 # %% IMPORT DATA AND DEFINE COLUMN GROUPS
 DAILY_DATA_PATH = "data.v3/daily" 
@@ -75,10 +77,10 @@ print(f"\nCategorical columns: {categorical_cols}")
 print(f"Numeric columns: {numeric_cols}")
 print(f"\nAll columns accounted for: {len(categorical_cols) + len(numeric_cols) == num_features}")
 
-# %% SPLIT DATA SEQUENTIALLY 70-20-10
+# %% SPLIT DATA SEQUENTIALLY 80-10-10
 n = len(LSTM_df)
-train_raw = LSTM_df[0:int(n*0.7)]
-val_raw = LSTM_df[int(n*0.7):int(n*0.9)]
+train_raw = LSTM_df[0:int(n*0.8)]
+val_raw = LSTM_df[int(n*0.8):int(n*0.9)]
 test_raw = LSTM_df[int(n*0.9):]
 
 # print data shapes
@@ -593,4 +595,10 @@ print("Time Series LSTM 28-day window", TimeSeriesLSTMW28.summary())
 print("Validation set performance:")
 print(pd.DataFrame(val_performance).T.round(2))
 
-# %%
+# %% Save validation performance to a CSV file
+output_dir = "model_output/daily/LSTM"
+os.makedirs(output_dir, exist_ok=True)
+val_performance_df = pd.DataFrame(val_performance).T.round(2)
+val_performance_df.to_csv(output_dir + "/LSTM_forecasts_val.csv")
+
+
